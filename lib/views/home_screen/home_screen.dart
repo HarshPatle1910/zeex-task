@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:zeex_task/consts/consts.dart';
 
 import '../../controllers/auth_controllers.dart';
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     AuthController.instance.resetInactivityTimer(); // Reset session timer
+    AuthController.instance.startSessionTimer();
     userFuture = fetchUserData(); // Fetch user data from Firestore
   }
 
@@ -87,6 +89,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                     ),
+                    SizedBox(height: 30),
+                    Obx(() {
+                      int minutesLeft =
+                          AuthController.instance.remainingTime.value;
+                      return Text(
+                        minutesLeft > 0
+                            ? "Session expires in: $minutesLeft min"
+                            : "Session expired! Logging out...",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: minutesLeft > 5 ? Colors.green : Colors.red,
+                        ),
+                      );
+                    }),
+
                     SizedBox(height: 30),
 
                     // Logout Button

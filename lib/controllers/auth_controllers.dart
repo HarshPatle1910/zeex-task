@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,6 +28,8 @@ class AuthController extends GetxController {
   static const String _keyLastActivity = "last_activity";
   static const int sessionTimeoutMinutes = 60; // Session expires after 60 mins
 
+  var remainingTime = 0.obs; // Observable for session countdown
+
   /// ************** LOGIN METHOD **************
   Future<UserCredential?> loginMethod({
     required String email,
@@ -42,6 +45,7 @@ class AuthController extends GetxController {
       );
 
       await saveSession(userCredential.user!.uid);
+      startSessionTimer(); // Start session timer after login
       return userCredential;
     } on FirebaseAuthException catch (e) {
       Get.snackbar("Login Failed", e.message ?? "An error occurred");
@@ -65,10 +69,8 @@ class AuthController extends GetxController {
         password: password,
       );
 
-      // Hash the password before storing
       String hashedPassword = hashPassword(password);
 
-      // Store user data in Firestore
       await storeUserData(
         name: name,
         email: email,
@@ -78,6 +80,7 @@ class AuthController extends GetxController {
       );
 
       await saveSession(userCredential.user!.uid);
+      startSessionTimer();
       return userCredential;
     } on FirebaseAuthException catch (e) {
       Get.snackbar("Signup Failed", e.message ?? "An error occurred");
@@ -87,8 +90,8 @@ class AuthController extends GetxController {
 
   /// ************** HASH PASSWORD **************
   String hashPassword(String password) {
-    var bytes = utf8.encode(password); // Convert password to bytes
-    var digest = sha256.convert(bytes); // Hash with SHA-256
+    var bytes = utf8.encode(password);
+    var digest = sha256.convert(bytes);
     return digest.toString();
   }
 
@@ -106,7 +109,7 @@ class AuthController extends GetxController {
       'id': userId,
       'name': name,
       'email': email,
-      'password': password, // Store hashed password
+      'password': password,
       'mobile': mobile,
       'created_at': FieldValue.serverTimestamp(),
     });
@@ -142,12 +145,37 @@ class AuthController extends GetxController {
     }
   }
 
+  /// ************** SESSION TIMER **************
+  void startSessionTimer() {
+    Timer.periodic(Duration(seconds: 1), (timer) async {
+      int? lastActivity = await _getLastActivity();
+      if (lastActivity == null) {
+        remainingTime.value = 0;
+        timer.cancel();
+        signoutMethod();
+        return;
+      }
+
+      int currentTime = DateTime.now().millisecondsSinceEpoch;
+      int elapsedMinutes = (currentTime - lastActivity) ~/ (1000 * 60);
+      int timeLeft = sessionTimeoutMinutes - elapsedMinutes;
+
+      if (timeLeft <= 0) {
+        remainingTime.value = 0;
+        timer.cancel();
+        signoutMethod();
+      } else {
+        remainingTime.value = timeLeft;
+      }
+    });
+  }
+
   /// ************** RESET INACTIVITY TIMER **************
   Future<void> resetInactivityTimer() async {
     await _updateLastActivity();
   }
 
-  /// ************** UPDATE LAST ACTIVITY TIME **************
+  /// ************** UPDATE LAST ACTIVITY **************
   Future<void> _updateLastActivity() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyLastActivity, DateTime.now().millisecondsSinceEpoch);
